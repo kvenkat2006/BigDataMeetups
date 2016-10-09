@@ -1,0 +1,108 @@
+
+
+from pyspark.sql.functions import split, explode
+
+#from pyspark.sql import SQLContext
+#sqlContext = SQLContext(sc)
+
+
+ 
+ -------------------------------
+ 
+ 
+df = sqlContext.read.json("gs://bigdatacaravan.appspot.com/data/somegeneratedData.json")
+df.printSchema()
+df.show(1)
+df.count()
+df.take(1)
+
+df.where(df.SALEID == 10001).show(3)
+
+aDf = df.select("PRODUCTS_SOLD.Amount", "PRODUCTS_SOLD.PRODUCT")
+
+bDf = df.select("STORE", "PRODUCTS_SOLD.Amount", "PRODUCTS_SOLD.PRODUCT").filter("STORE = 'STORE004'")
+
+bDf = df.select("STORE", "PRODUCTS_SOLD.Amount", "PRODUCTS_SOLD.PRODUCT").where(df.PRODUCTS_SOLD[0].PRODUCT == "PR012")
+
+
+cDf = df.select(df.SALEID, df.STORE, explode(df.PRODUCTS_SOLD).alias("prod"))
+df.where(df.SALEID == 10001).show(30)
+cDf.where(cDf.SALEID == 10001).show(30)
+
+dDf = cDf.select(cDf.SALEID,cDf.STORE, cDf.prod["Amount"].alias("Amt"), cDf.prod["PRODUCT"])
+dDf.show(3)
+
+eDf = dDf.select(dDf.STORE, dDf.Amt)
+
+eDf = dDf.select(dDf.STORE, dDf.Amt).groupby(dDf.STORE).sum()
+
+---------------------------
+###Lets get aggregated values per store, per product:
+
+df = sqlContext.read.json("gs://bigdatacaravan.appspot.com/data/somegeneratedData.json")
+
+cccDf = df.select(df.SALEID, df.STORE, explode(df.PRODUCTS_SOLD).alias("prod"))
+dddDf = cccDf.select(cccDf.STORE, cccDf.prod["Amount"].alias("Amt"), cccDf.prod["PRODUCT"].alias("PRDCT"))
+
+eeeDf = dddDf.select(dddDf.STORE, dddDf.PRDCT, dddDf.Amt).groupby(dddDf.STORE, dddDf.PRDCT).sum().orderBy(dddDf.STORE, dddDf.PRDCT)
+eeeDf.count()
+eeeDf.show(225)
+
+--------------
+--------------------
+Spark CORE API:
+------------------
+
+
+from random import random
+import datetime
+#from pyspark.sql import SparkSession
+#import numpy as np
+
+#if __name__ == "__main__":
+#
+#        spark = SparkSession\
+#                .builder\
+#                .appName("RiskAggregationPOC")\
+#                .getOrCreate()
+
+def makeProdAmountPairs(s):
+	colVals = s.split(",")
+	prodsSold = colVals[3].split("|")
+	prodsSoldHash={}
+	for p in prodsSold:
+		ptemp = p.split(":")
+		prodsSoldHash[ptemp[0]]=float(ptemp[1])
+	return (colVals[2], prodsSoldHash)
+
+
+
+def getAllKeys(a,b):
+	allKeys = list(a.keys()) + list(b.keys())
+	#allKeys.sort()
+	keysSet = set(allKeys)
+	return keysSet
+
+def sumHashes(a,b):
+	consolidatedHash={}
+	keysSet = getAllKeys(a,b)
+	for key in keysSet:
+		sum=0.0
+		if key in a.keys():
+			sum = sum+a[key]
+		if key in b.keys():
+			sum = sum+b[key]
+		consolidatedHash[key]=sum
+	return consolidatedHash
+
+
+aRdd = spark.sparkContext.textFile("gs://bigdatacaravan.appspot.com/data/somegeneratedData.csv").filter(lambda s: "BDATE" not in s)
+#aRdd.repartition(14)
+	
+print ("XXXXXXXXXXXXXXXXXXXXXXXX  The block begins: " + datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d %H:%M:%S') )
+
+storeProductsSoldPairs = aRdd.map(lambda s : makeProdAmountPairs(s)).persist()
+storesSalesAmountsAggregated = storeProductsSoldPairs.reduceByKey(lambda a,b: sumHashes(a,b)).repartition(1)
+storesSalesAmountsAggregated.saveAsTextFile("gs://bigdatacaravan.appspot.com/output/aggregatedTestData")
+
+print ("XXXXXXXXXXXXXXXXXXXXXXXX  The  block ends: " + datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d %H:%M:%S') )
