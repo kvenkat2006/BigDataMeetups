@@ -1,0 +1,72 @@
+#loading the RWeka  library 
+library(RWeka)
+library(class)
+
+# loading the train and test files from my computer to R
+train <- read.csv("train.csv", header=TRUE)
+test <- read.csv("test.csv", header=TRUE)
+
+# to view the datasets 
+train
+test
+View(train)
+View(test)
+dim(train)
+dim(test)
+
+
+
+# plotting
+
+train.data <- train[5600,-1]
+imageData <- do.call(rbind, lapply(train.data, unlist))
+imageData <- matrix(imageData, 28, 28)
+image(imageData)
+
+# test for unlist
+#x<-unlist (train.data[2,])
+#y<- (train.data[2,])
+
+
+
+#the next code is to encode a vector as a factor (category and enumerated) type
+# Our dataset colum 1 is vector which has to encode to factor
+labels <- train[1:1000,1]
+labels1<-as.factor(labels)
+
+#dataset is too big take partial of it 
+train1 <- train[1:1000,-1]
+test1 <-test[1:100,]
+
+# apply the KNN model
+label <- knn(train1, test1, labels1, k = 10)
+
+write(label, file="knn_benchmark.csv", ncolumns=2) 
+
+#what are you doing here?
+
+new.train<-train[1:1000,]
+new.test<-cbind (label, test1)
+new.dataset<-rbind(new.train, new.test)
+
+
+#shuffle the rows
+
+X<-runif(nrow(new.dataset))
+new.list<-new.dataset[order(X),]
+
+#measiring the accuracy of  KNN
+
+new.list.train<-new.list[1:899,-1]
+new.list.test<-new.list[900:1100,-1]
+new.list.label.train<-new.list[1:899,1]
+new.list.label.test<-new.list[900:1100,1]
+
+new.label <- knn(new.list.train, new.list.test, new.list.label.train, k = 10)
+
+table(new.label, new.list.label.test)
+
+(sum (new.label==new.list.label.test)/length(new.list.label.test))*100
+
+
+
